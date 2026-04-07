@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>2026 Iran War — Missile Launches Tracker</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/deck.gl@9.0.16/dist.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:#121212;--surface2:#181818;--border:#252525;--border-bright:#383838;--text:#f0f0f0;--muted:#a8a8a8;--text-secondary:#c8c8c8;--green:#00ff41;--green-dim:rgba(0,255,65,.08);--green-mid:rgba(0,255,65,.15);--green-bright:#39ff14;--red:#ff3838;--orange:#ff9f1c;--yellow:#ffd60a;--cyan:#00ff41;--purple:#c77dff;--blue:#4cc9f0}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+body{font-family:'JetBrains Mono','Fira Code','Courier New',monospace;background:var(--bg);color:var(--text);overflow-x:hidden;min-height:100vh;font-size:13px}
+a{color:var(--green);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.header{background:var(--bg);border-bottom:1px solid var(--green-dim);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:1000;box-shadow:0 0 20px var(--green-dim)}
+.header h1{font-size:clamp(13px,3vw,18px);font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--green);text-shadow:0 0 8px var(--green-dim)}
+.header h1::before{content:'> ';color:var(--green-bright)}
+.live-badge{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:1px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;box-shadow:0 0 8px var(--green)}
+.live-dot.disconnected{background:var(--red);animation:none;box-shadow:0 0 8px var(--red)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 8px var(--green)}50%{opacity:.6;transform:scale(1.3);box-shadow:0 0 16px var(--green)}}
+
+/* Trend badges */
+.trends{display:flex;gap:8px;padding:8px 16px;overflow-x:auto;scrollbar-width:none}
+.trends::-webkit-scrollbar{display:none}
+.trend-badge{white-space:nowrap;padding:4px 12px;border-radius:0;font-size:11px;font-weight:500;border:1px solid var(--border);background:var(--card);flex-shrink:0;font-family:inherit}
+.trend-badge.down{color:var(--green);border-color:var(--green-dim);background:var(--green-dim)}
+.trend-badge.up{color:var(--red);border-color:rgba(255,56,56,.3)}
+
+/* Stats */
+.stats-row{display:flex;gap:10px;padding:10px 16px;overflow-x:auto;scrollbar-width:none}
+.stats-row::-webkit-scrollbar{display:none}
+.stat-card{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:0;padding:12px 16px;min-width:140px;flex-shrink:0;transition:all .2s}
+.stat-card:hover{border-left-color:var(--green-bright);background:var(--surface2)}
+.stat-card .label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px}
+.stat-card .value{font-size:24px;font-weight:700;font-family:inherit}
+.stat-card .sub{font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:.5px}
+.stat-card.red .value{color:var(--red)}
+.stat-card.green .value{color:var(--green)}
+.stat-card.orange .value{color:var(--orange)}
+.stat-card.cyan .value{color:var(--cyan)}
+.stat-card.yellow .value{color:var(--yellow)}
+.stat-card.purple .value{color:var(--purple)}
+
+/* Filters */
+.filters{display:flex;gap:8px;padding:8px 16px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border)}
+.filter-group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.filter-group label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-right:4px}
+.filter-btn{padding:5px 12px;border-radius:0;border:1px solid var(--border-bright);background:var(--card);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all .15s;user-select:none;-webkit-tap-highlight-color:transparent;font-family:inherit;text-transform:uppercase;letter-spacing:1px}
+.filter-btn.active{border-color:var(--green);background:var(--green-dim);color:var(--green);box-shadow:0 0 6px var(--green-dim)}
+.filter-btn:hover{border-color:var(--green);color:var(--green)}
+select.country-filter{background:var(--card);color:var(--green);border:1px solid var(--border-bright);border-radius:0;padding:5px 8px;font-size:11px;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:1px}
+
+/* Map */
+.map-container{position:relative;height:60vh;min-height:350px;border-bottom:1px solid var(--border)}
+#map{height:100%;width:100%;background:var(--bg)}
+.maplibregl-canvas{outline:none}
+.maplibregl-ctrl-group{background:var(--card)!important;border:1px solid var(--green-dim)!important;border-radius:0!important}
+.maplibregl-ctrl-group button{color:var(--green)!important;background:transparent!important;border-bottom:1px solid var(--border)!important}
+.maplibregl-ctrl-group button:hover{background:var(--green-dim)!important}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1) hue-rotate(90deg) brightness(2)}
+.maplibregl-ctrl-attrib{background:rgba(10,10,10,.7)!important;color:var(--muted)!important;font-size:9px!important;font-family:inherit!important}
+.maplibregl-ctrl-attrib a{color:var(--green)!important}
+.maplibregl-popup-content{background:var(--card)!important;color:var(--text)!important;border:1px solid var(--green-dim)!important;border-radius:0!important;box-shadow:0 0 20px var(--green-dim)!important;font-family:'JetBrains Mono',monospace!important;font-size:11px!important;padding:10px 12px!important}
+.maplibregl-popup-tip{border-top-color:var(--card)!important}
+.maplibregl-popup-close-button{color:var(--muted)!important;font-size:16px!important}
+.maplibregl-popup-close-button:hover{color:var(--green)!important}
+.map-legend{position:absolute;bottom:20px;right:10px;z-index:999;background:rgba(10,10,10,.92);border:1px solid var(--green-dim);border-radius:0;padding:10px 12px;font-size:10px;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;box-shadow:0 0 12px var(--green-dim)}
+.map-legend .legend-item{display:flex;align-items:center;gap:6px;margin:3px 0;cursor:pointer;color:var(--text-secondary)}
+.map-legend .legend-line{width:20px;height:2px;border-radius:0}
+
+/* 3D View controls */
+.view-controls{position:absolute;top:10px;right:10px;z-index:999;display:flex;flex-direction:column;gap:4px}
+.view-btn{background:rgba(10,10,10,.9);border:1px solid var(--green-dim);color:var(--green);padding:6px 10px;font-size:9px;font-family:inherit;text-transform:uppercase;letter-spacing:1px;cursor:pointer;white-space:nowrap;transition:all .2s}
+.view-btn:hover,.view-btn.active{background:var(--green-dim);box-shadow:0 0 8px var(--green-dim)}
+
+/* Facility markers (MapLibre) */
+.facility-dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--orange);background:rgba(249,115,22,.3);position:absolute;transform:translate(-50%,-50%)}
+.facility-dot.hq{border-color:var(--red);background:rgba(239,68,68,.3)}
+.facility-dot.production{border-color:var(--yellow);background:rgba(234,179,8,.3)}
+.facility-dot.naval{border-color:var(--cyan);background:rgba(6,182,212,.3)}
+.facility-dot.air{border-color:var(--purple);background:rgba(168,85,247,.3)}
+
+/* Timeline slider */
+.timeline-slider{padding:12px 16px;background:var(--card);border-bottom:1px solid var(--border)}
+.timeline-slider .slider-row{display:flex;align-items:center;gap:8px}
+.timeline-slider .slider-header{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+.timeline-slider input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:0;background:var(--border);outline:none}
+.timeline-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:0;background:var(--green);cursor:pointer;border:1px solid var(--bg);box-shadow:0 0 6px var(--green)}
+.timeline-slider input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:0;background:var(--green);cursor:pointer;border:1px solid var(--bg);box-shadow:0 0 6px var(--green)}
+.play-btn{background:none;border:1px solid var(--green-dim);color:var(--green);width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.play-btn:hover{background:var(--green);color:var(--bg);border-color:var(--green)}
+.play-btn.playing{background:var(--green);color:var(--bg);animation:pulse-play 1s ease infinite}
+.speed-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:2px 6px;font-size:9px;cursor:pointer;font-family:inherit;letter-spacing:.5px;transition:all .2s}
+.speed-btn:hover,.speed-btn.active{border-color:var(--green-dim);color:var(--green)}
+@keyframes pulse-play{0%,100%{box-shadow:0 0 4px var(--green)}50%{box-shadow:0 0 12px var(--green)}}
+
+/* Data animations */
+@keyframes pulse-glow{0%,100%{opacity:1}50%{opacity:.7}}
+@keyframes count-flash{0%{color:var(--green-bright);text-shadow:0 0 10px var(--green)}100%{text-shadow:none}}
+.stat-card .value.counting{animation:count-flash .6s ease}
+.stats-row.flash .stat-card{animation:pulse-glow .3s ease}
+@keyframes fade-slide-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* Chart */
+.chart-container{padding:16px;height:220px;position:relative}
+.chart-container canvas{max-height:200px}
+
+/* Missile info panel */
+.missile-info{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border:1px solid var(--green-dim);border-radius:0;padding:20px;z-index:2000;max-width:400px;width:90%;box-shadow:0 0 40px var(--green-dim),0 20px 60px rgba(0,0,0,.7)}
+.missile-info.show{display:block}
+.missile-info h3{color:var(--green);margin-bottom:12px;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
+.missile-info h3::before{content:'> ';color:var(--green-bright)}
+.missile-info .close-btn{position:absolute;top:10px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;font-family:inherit}
+.missile-info .close-btn:hover{color:var(--green)}
+.missile-info table{width:100%;font-size:12px;font-family:inherit}
+.missile-info td{padding:5px 0;border-bottom:1px solid var(--border)}
+.missile-info td:first-child{color:var(--muted);width:40%;text-transform:uppercase;font-size:10px;letter-spacing:1px}
+.missile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1999}
+.missile-overlay.show{display:block}
+
+/* Country breakdown */
+.breakdown{padding:12px 16px}
+.breakdown h3{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px}
+.breakdown h3::before{content:'> ';color:var(--green-bright)}
+.breakdown-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.breakdown-item{background:var(--card);border:1px solid var(--border);border-left:2px solid var(--green-dim);border-radius:0;padding:10px;transition:all .2s;opacity:0;animation:fade-slide-in .4s ease forwards}
+.breakdown-item:hover{border-left-color:var(--green);background:var(--surface2)}
+.breakdown-item .country{font-size:11px;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;color:var(--text-secondary)}
+.breakdown-item .count{font-size:20px;font-weight:700;font-family:inherit;color:var(--green)}
+.breakdown-item .bar{height:3px;border-radius:0;margin-top:6px;background:var(--border)}
+.breakdown-item .bar-fill{height:100%;border-radius:0;transition:width .5s}
+
+/* News ticker */
+.news-ticker{background:var(--card);border-top:1px solid var(--green-dim);border-bottom:1px solid var(--green-dim);padding:8px 16px;font-size:11px;overflow:hidden;white-space:nowrap;font-family:inherit}
+.news-ticker .ticker-label{color:var(--red);font-weight:700;margin-right:12px;text-transform:uppercase;letter-spacing:1.5px;text-shadow:0 0 6px rgba(255,56,56,.4)}
+.ticker-content{display:inline-block;animation:scroll 30s linear infinite;color:var(--text-secondary)}
+@keyframes scroll{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}
+
+/* Sources */
+.sources{padding:16px;border-top:1px solid var(--border)}
+.sources h3{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px}
+.sources h3::before{content:'> ';color:var(--green-bright)}
+.sources ul{list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+.sources li{font-size:10px;padding:4px 10px;border:1px solid var(--border);border-radius:0;background:var(--card);text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-family:inherit}
+.sources li:hover{border-color:var(--green-dim);color:var(--green)}
+.sources li.biased{border-color:var(--red);position:relative}
+.sources li.biased::after{content:'BIASED';position:absolute;top:-7px;right:-4px;font-size:7px;background:var(--red);color:#fff;padding:1px 4px;letter-spacing:1px;font-weight:700;line-height:1.2}
+.sources li.biased:hover{border-color:#ff6666;color:#ff6666}
+
+/* Mobile */
+@media(max-width:768px){
+  .header{padding:8px 12px}
+  .stats-row{padding:8px 12px}
+  .stat-card{min-width:120px;padding:8px 12px}
+  .stat-card .value{font-size:20px}
+  .filters{padding:8px 12px}
+  .map-container{height:45vh;min-height:250px}
+  .chart-container{height:180px}
+  .breakdown-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+}
+@media(max-width:480px){
+  .stat-card{min-width:100px}
+  .filter-btn{padding:4px 8px;font-size:11px}
+}
+
+/* Notification flash */
+.flash{animation:flashAnim .5s ease-out}
+@keyframes flashAnim{0%{background:rgba(0,255,65,.2)}100%{background:transparent}}
+
+/* Loading */
+.loading{display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:2px;font-family:inherit}
+.loading::before{content:'> ';color:var(--green-bright)}
+
+/* Tooltip on hover */
+.map-tooltip{position:absolute;z-index:1000;background:rgba(10,10,10,.95);border:1px solid var(--green-dim);padding:8px 12px;font-size:10px;font-family:inherit;color:var(--text);pointer-events:none;max-width:300px;box-shadow:0 0 16px var(--green-dim)}
+.map-tooltip strong{color:var(--green);text-transform:uppercase;letter-spacing:1px}
+
+/* deck.gl overlay */
+#deck-canvas{position:absolute!important;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:500}
+
+/* Animated counter roll */
+.stat-card .value{transition:all .3s}
+.stat-card .value.counting{color:var(--green-bright);text-shadow:0 0 8px var(--green)}
+
+/* Pulsing impact markers */
+.impact-pulse{animation:impactPulse 2s ease-out infinite}
+@keyframes impactPulse{
+  0%{r:6;opacity:1;stroke-width:2}
+  50%{r:18;opacity:.3;stroke-width:1}
+  100%{r:6;opacity:1;stroke-width:2}
+}
+
+/* Origin glow markers */
+.origin-marker{animation:originGlow 3s ease-in-out infinite}
+@keyframes originGlow{0%,100%{box-shadow:0 0 4px var(--green)}50%{box-shadow:0 0 16px var(--green),0 0 30px var(--green-dim)}}
+
+/* Animated arc CSS fallback */
+.arc-animated{stroke-dasharray:800;stroke-dashoffset:800;animation:arcDraw 2s ease-out forwards}
+@keyframes arcDraw{to{stroke-dashoffset:0}}
+
+/* Map info overlay */
+.map-info-overlay{position:absolute;top:10px;left:10px;z-index:999;background:rgba(10,10,10,.85);border:1px solid var(--green-dim);padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--green)}
+.map-info-overlay .count{font-size:18px;font-weight:700;color:var(--green-bright);text-shadow:0 0 10px var(--green)}
+
+/* Trajectory type indicators */
+.traj-ballistic{filter:drop-shadow(0 0 4px #ff3838)}
+.traj-cruise{filter:drop-shadow(0 0 4px #ff9f1c)}
+.traj-drone{filter:drop-shadow(0 0 4px #ffd60a)}
+.traj-rocket{filter:drop-shadow(0 0 4px #c77dff)}
+</style>
+</head>
+<body>
+<!-- Header -->
+<div class="header">
+  <h1>2026 Iran War — Missile Launches Tracker</h1>
+  <div class="live-badge"><div class="live-dot disconnected" id="liveDot"></div><span id="liveText">CONNECTING...</span></div>
+</div>
+
+<!-- Trend badges -->
+<div class="trends" id="trends"></div>
+
+<!-- Stats cards -->
+<div class="stats-row" id="statsRow">
+  <div class="stat-card red"><div class="label">Total Launched</div><div class="value" id="statTotal">—</div><div class="sub" id="statTotalSub"></div></div>
+  <div class="stat-card green"><div class="label">Intercepted</div><div class="value" id="statIntercepted">—</div><div class="sub" id="statInterceptedPct"></div></div>
+  <div class="stat-card orange"><div class="label">Hits</div><div class="value" id="statHit">—</div><div class="sub" id="statHitPct"></div></div>
+  <div class="stat-card cyan"><div class="label">Interception Rate</div><div class="value" id="statRate">—</div></div>
+  <div class="stat-card yellow"><div class="label">Casualties</div><div class="value" id="statCasualties">—</div></div>
+  <div class="stat-card purple"><div class="label">Days of Conflict</div><div class="value" id="statDays">—</div></div>
+  <div class="stat-card red"><div class="label">Est. Attack Cost</div><div class="value" id="statAttackCost">—</div><div class="sub" id="statAttackCostSub"></div></div>
+  <div class="stat-card green"><div class="label">Est. Defense Cost</div><div class="value" id="statDefenseCost">—</div><div class="sub" id="statDefenseCostSub"></div></div>
+</div>
+
+<!-- Filters -->
+<div class="filters">
+  <div class="filter-group">
+    <label>Type:</label>
+    <button class="filter-btn active" data-type="all">All</button>
+    <button class="filter-btn" data-type="ballistic">Ballistic</button>
+    <button class="filter-btn" data-type="cruise">Cruise</button>
+    <button class="filter-btn" data-type="drone">Drone/UAV</button>
+    <button class="filter-btn" data-type="rocket">Rocket</button>
+    <button class="filter-btn" data-type="naval">Naval</button>
+  </div>
+  <div class="filter-group">
+    <label>Origin:</label>
+    <select class="country-filter" id="originFilter">
+      <option value="all">ALL</option>
+      <option value="Iran">🇮🇷 Iran</option>
+      <option value="Israel">🇮🇱 Israel</option>
+      <option value="USA">🇺🇸 USA</option>
+      <option value="Lebanon">🇱🇧 Hezbollah</option>
+      <option value="Yemen">🇾🇪 Houthis</option>
+      <option value="Gaza">🇵🇸 Hamas/PIJ</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>Target:</label>
+    <select class="country-filter" id="countryFilter">
+      <option value="all">ALL</option>
+      <option value="Israel">🇮🇱 Israel</option>
+      <option value="Iran">🇮🇷 Iran</option>
+      <option value="Lebanon">🇱🇧 Lebanon</option>
+      <option value="Yemen">🇾🇪 Yemen</option>
+      <option value="UAE">🇦🇪 UAE</option>
+      <option value="Iraq">🇮🇶 Iraq</option>
+      <option value="Bahrain">🇧🇭 Bahrain</option>
+      <option value="Qatar">🇶🇦 Qatar</option>
+      <option value="Kuwait">🇰🇼 Kuwait</option>
+      <option value="Saudi Arabia">🇸🇦 Saudi Arabia</option>
+      <option value="Oman">🇴🇲 Oman</option>
+      <option value="Jordan">🇯🇴 Jordan</option>
+    </select>
+  </div>
+</div>
+
+<!-- Map -->
+<div class="map-container">
+  <div id="map"></div>
+  <div class="view-controls">
+    <button class="view-btn active" onclick="setView('3d')">3D VIEW</button>
+    <button class="view-btn" onclick="setView('top')">TOP DOWN</button>
+    <button class="view-btn" onclick="setView('israel')">🇮🇱 ISRAEL</button>
+    <button class="view-btn" onclick="setView('iran')">🇮🇷 IRAN</button>
+    <button class="view-btn" onclick="setView('gulf')">GULF</button>
+    <button class="view-btn" onclick="setView('yemen')">🇾🇪 YEMEN</button>
+    <button class="view-btn" onclick="setView('full')">FULL THEATER</button>
+  </div>
+  <div class="map-info-overlay" id="mapInfoOverlay">
+    <div>ACTIVE TRAJECTORIES</div>
+    <div class="count" id="activeTrajectories">0</div>
+  </div>
+  <div class="map-legend" id="mapLegend">
+    <div class="legend-item"><span class="legend-line" style="background:#ff3838"></span>→ 🇮🇱 Israel</div>
+    <div class="legend-item"><span class="legend-line" style="background:#00ff41"></span>→ 🇮🇷 Iran</div>
+    <div class="legend-item"><span class="legend-line" style="background:#ff9f1c"></span>→ 🇦🇪 UAE / 🇾🇪 Yemen</div>
+    <div class="legend-item"><span class="legend-line" style="background:#ffd60a"></span>→ Gulf / 🇱🇧 Leb</div>
+    <div class="legend-item"><span class="legend-line" style="background:#c77dff"></span>→ 🇸🇦 KSA / 🇵🇸 Gaza</div>
+    <div class="legend-item"><span class="legend-line" style="background:#4cc9f0"></span>→ Other</div>
+    <hr style="border-color:var(--border);margin:6px 0">
+    <div style="font-size:9px;color:var(--muted)">CLICK + DRAG TO ROTATE</div>
+    <div style="font-size:9px;color:var(--muted)">CTRL+DRAG TO PITCH</div>
+  </div>
+  <div class="map-tooltip" id="mapTooltip" style="display:none"></div>
+</div>
+
+<!-- Timeline slider -->
+<div class="timeline-slider">
+  <div class="slider-header"><span id="sliderStart">Feb 28</span><span id="sliderLabel">All dates</span><span id="sliderEnd">Latest</span></div>
+  <div class="slider-row">
+    <button class="play-btn" id="playBtn" onclick="togglePlay()" title="Play timeline">&#9654;</button>
+    <input type="range" id="timelineSlider" min="0" max="100" value="100">
+    <button class="speed-btn active" id="speedBtn" onclick="cycleSpeed()">1x</button>
+  </div>
+</div>
+
+<!-- Chart -->
+<div class="chart-container"><canvas id="timelineChart"></canvas></div>
+
+<!-- Country breakdown -->
+<div class="breakdown">
+  <h3>Launches by Origin</h3>
+  <div class="breakdown-grid" id="originBreakdown"></div>
+</div>
+<div class="breakdown">
+  <h3>Launches by Target Country</h3>
+  <div class="breakdown-grid" id="countryBreakdown"></div>
+</div>
+<div class="breakdown">
+  <h3>Launches by Projectile Type</h3>
+  <div class="breakdown-grid" id="typeBreakdown"></div>
+</div>
+<div class="breakdown">
+  <h3>Interception Systems</h3>
+  <div class="breakdown-grid" id="interceptorBreakdown"></div>
+</div>
+
+<!-- News ticker -->
+<div class="news-ticker"><span class="ticker-label">Latest:</span><span class="ticker-content" id="newsTicker">Monitoring RSS feeds for new missile launch reports...</span></div>
+
+<!-- Missile info modal -->
+<div class="missile-overlay" id="missileOverlay" onclick="hideMissileInfo()"></div>
+<div class="missile-info" id="missileInfo">
+  <button class="close-btn" onclick="hideMissileInfo()">&times;</button>
+  <h3>Iranian Missile Arsenal — 2026 War</h3>
+  <table>
+    <tr><td>Fattah-1</td><td>Hypersonic ballistic — 1,400 km</td></tr>
+    <tr><td>Kheibar Shekan</td><td>MRBM — 1,450 km</td></tr>
+    <tr><td>Emad</td><td>MRBM — 1,700 km</td></tr>
+    <tr><td>Ghadr</td><td>MRBM — 1,950 km</td></tr>
+    <tr><td>Shahab-3</td><td>MRBM — 2,000 km</td></tr>
+    <tr><td>Fateh-110</td><td>SRBM — 300 km</td></tr>
+    <tr><td>Paveh</td><td>Cruise missile — 1,650 km</td></tr>
+    <tr><td>Hoveyzeh</td><td>Cruise missile — 1,350 km</td></tr>
+    <tr><td>Shahed-136</td><td>OWA drone — 2,500 km</td></tr>
+    <tr><td>Shahed-149</td><td>UCAV drone — 2,000 km</td></tr>
+  </table>
+</div>
+
+<!-- Sources -->
+<div class="sources">
+  <h3>Verified Sources</h3>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/2026_Iranian_strikes_on_Israel" target="_blank">Wikipedia: 2026 Iranian Strikes on Israel</a></li>
+    <li><a href="https://acleddata.com/update/middle-east-special-issue-march-2026" target="_blank">ACLED: Middle East Special Issue</a></li>
+    <li><a href="https://jinsa.org/jinsa_report/irans-missile-firepower-has-almost-run-out/" target="_blank">JINSA: Missile Firepower Report</a></li>
+    <li><a href="https://www.jpost.com/defense-and-tech/article-889435" target="_blank">JPost: Fire Rate Analysis</a></li>
+    <li><a href="https://www.longwarjournal.org/archives/2026/03/analysis-why-irans-ballistic-missile-launches-are-declining.php" target="_blank">FDD: Long War Journal</a></li>
+    <li><a href="https://www.britannica.com/event/12-Day-War" target="_blank">Britannica: 12-Day War</a></li>
+    <li><a href="https://www.csis.org/analysis/assessing-air-campaign-after-three-weeks-iran-war-numbers" target="_blank">CSIS: Air Campaign Assessment</a></li>
+    <li><a href="https://en.wikipedia.org/wiki/2026_Iranian_strikes_on_the_United_Arab_Emirates" target="_blank">Wikipedia: 2026 Strikes on UAE</a></li>
+    <li><a href="https://missilethreat.csis.org/country/iran/" target="_blank">CSIS Missile Threat: Iran</a></li>
+    <li><a href="https://www.iiss.org/publications/the-military-balance" target="_blank">IISS: The Military Balance</a></li>
+    <li><a href="https://www.idf.il/en/" target="_blank">IDF Official Statements</a></li>
+    <li><a href="https://www.centcom.mil/MEDIA/PRESS-RELEASES/" target="_blank">US CENTCOM Press Releases</a></li>
+    <li><a href="https://www.defense.gov/" target="_blank">US Dept. of Defense</a></li>
+    <li><a href="https://www.rand.org/topics/iran.html" target="_blank">RAND Corporation: Iran</a></li>
+    <li><a href="https://www.sipri.org/databases/armstransfers" target="_blank">SIPRI Arms Transfers DB</a></li>
+    <li><a href="https://www.bellingcat.com/" target="_blank">Bellingcat OSINT</a></li>
+    <li><a href="https://www.oryxspioenkop.com/" target="_blank">Oryx: Visual Confirmation</a></li>
+    <li class="biased"><a href="https://www.aljazeera.com/news/2026/3/1/us-israel-attacks-on-iran-death-toll-and-injuries-live-tracker" target="_blank">Al Jazeera: Live Tracker</a></li>
+    <li class="biased"><a href="https://www.amnesty.org/en/latest/news/2026/03/israel-irans-missile-strike-that-killed-nine-civilians-must-be-investigated-as-a-war-crime-new-investigation/" target="_blank">Amnesty International</a></li>
+  </ul>
+</div>
+<script>
+// ── Iranian Military Facilities ──────────────────────────────────────────────
+const FACILITIES = [
+  { name: 'IRGC Aerospace Force HQ', lat: 35.70, lng: 51.42, type: 'hq' },
+  { name: 'Basij HQ Tehran', lat: 35.69, lng: 51.39, type: 'hq' },
+  { name: 'Shahid Modarres Missile Base', lat: 35.05, lng: 52.35, type: 'missile' },
+  { name: 'Isfahan Missile Production', lat: 32.65, lng: 51.68, type: 'production' },
+  { name: 'Parchin Military Complex', lat: 35.52, lng: 51.77, type: 'production' },
+  { name: 'Semnan Space Center', lat: 35.23, lng: 53.92, type: 'production' },
+  { name: 'Shahrud Missile Test Site', lat: 36.42, lng: 55.00, type: 'missile' },
+  { name: 'Imam Ali Missile Base', lat: 34.05, lng: 47.30, type: 'missile' },
+  { name: 'Bid Kaneh Missile Base', lat: 33.50, lng: 48.75, type: 'missile' },
+  { name: 'Khorramabad Missile Base', lat: 33.49, lng: 48.35, type: 'missile' },
+  { name: 'Dezful Missile Base', lat: 32.38, lng: 48.40, type: 'missile' },
+  { name: 'Tabriz Air Base', lat: 38.13, lng: 46.24, type: 'air' },
+  { name: 'Kermanshah Air Base', lat: 34.35, lng: 47.16, type: 'air' },
+  { name: 'Hamadan Air Base', lat: 34.87, lng: 48.55, type: 'air' },
+  { name: 'Shiraz Air Base', lat: 29.54, lng: 52.59, type: 'air' },
+  { name: 'Mashhad Air Base', lat: 36.24, lng: 59.63, type: 'air' },
+  { name: 'Bushehr', lat: 28.97, lng: 50.82, type: 'production' },
+  { name: 'Bandar Abbas Naval Base', lat: 27.18, lng: 56.27, type: 'naval' },
+  { name: 'IRGC Navy HQ Bandar Abbas', lat: 27.19, lng: 56.28, type: 'naval' },
+  { name: 'Chabahar Naval Base', lat: 25.29, lng: 60.64, type: 'naval' },
+];
+
+const TARGET_COLORS = {
+  'Israel': '#ff3838',
+  'UAE': '#ff9f1c',
+  'Iraq': '#ffd60a',
+  'Bahrain': '#ffd60a',
+  'Qatar': '#ffd60a',
+  'Kuwait': '#ffd60a',
+  'Saudi Arabia': '#c77dff',
+  'Oman': '#4cc9f0',
+  'Jordan': '#4cc9f0',
+  'Iran': '#00ff41',
+  'Lebanon': '#4cc9f0',
+  'Yemen': '#ff9f1c',
+  'Gaza': '#c77dff',
+};
+
+// Country flag emojis (Unicode regional indicators)
+const FLAGS = {
+  'Iran': '🇮🇷', 'Israel': '🇮🇱', 'USA': '🇺🇸', 'Lebanon': '🇱🇧',
+  'Yemen': '🇾🇪', 'Gaza': '🇵🇸', 'UAE': '🇦🇪', 'Saudi Arabia': '🇸🇦',
+  'Iraq': '🇮🇶', 'Bahrain': '🇧🇭', 'Qatar': '🇶🇦', 'Kuwait': '🇰🇼',
+  'Oman': '🇴🇲', 'Jordan': '🇯🇴',
+};
+const flag = (c) => FLAGS[c] || '';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let allLaunches = [];
+let filteredLaunches = [];
+let activeTypeFilter = 'all';
+let activeCountryFilter = 'all';
+let activeOriginFilter = 'all';
+let timelineMax = 100;
+let map, deckOverlay, facilityMarkers = [], popupMarkers = [];
+let timelineChart;
+let ws;
+let wsReconnectDelay = 1000;
+let currentTime = 0;
+let mapLoaded = false;
+let pendingDraw = null;
+
+// ── Estimated unit costs (USD) ──────────────────────────────────────────────
+// Sources: CSIS Missile Threat, IISS Military Balance, RAND, SIPRI, open-source estimates
+// Attack costs = what the launcher spent; Defense costs = what the defender spent intercepting
+const ATTACK_COST = {
+  // Iranian ballistic missiles
+  'Fattah-1':         5000000,   // $5M - hypersonic MaRV
+  'Kheibar Shekan':   3000000,   // $3M - solid-fuel MRBM
+  'Emad':             2500000,   // $2.5M - guided Shahab variant
+  'Ghadr':            2000000,   // $2M - MRBM
+  'Shahab-3':         1500000,   // $1.5M - liquid-fuel MRBM
+  'Fateh-110':        500000,    // $500K - short-range tactical
+  'Dezful':           600000,    // $600K - Fateh variant
+  'Zolfaghar':        700000,    // $700K - guided Fateh
+  // Iranian cruise missiles
+  'Paveh':            1000000,   // $1M - land-attack cruise
+  'Hoveyzeh':         1200000,   // $1.2M - long-range cruise
+  'Ya-Ali':           800000,    // $800K - cruise missile
+  // Iranian drones
+  'Shahed-136':       20000,     // $20K - one-way attack drone
+  'Shahed-149':       2000000,   // $2M - MALE UCAV
+  // Iranian naval
+  'Noor':             500000,    // $500K - C-802 variant AShM
+  'Khalij Fars':      3000000,   // $3M - anti-ship ballistic
+  'Ghader':           600000,    // $600K - AShM
+  // Houthi systems
+  'Burkan-3':         1000000,   // $1M - MRBM (Iranian-supplied)
+  'Toufan-1':         500000,    // $500K - cruise
+  'Samad-3':          50000,     // $50K - attack drone
+  'Waid-1':           30000,     // $30K - one-way drone
+  // Hezbollah
+  'Zelzal-2':         200000,    // $200K - heavy rocket
+  'Fadi-4':           300000,    // $300K - guided rocket
+  'Falaq-1':          50000,     // $50K - rocket
+  'Almas':            150000,    // $150K - ATGM (Spike clone)
+  'Kornet':           60000,     // $60K - Russian ATGM
+  // Hamas/PIJ
+  'Fajr-5':           10000,     // $10K - unguided rocket
+  'M-302':            20000,     // $20K - long-range rocket
+  // Israeli/US systems
+  'F-35I':            0,         // Sortie cost counted separately
+  'GBU-39 SDB':       40000,    // $40K - small diameter bomb
+  'JDAM':             25000,     // $25K - GPS guided bomb
+  'Spice-250':        100000,   // $100K - Israeli PGM
+  'Delilah':          1000000,   // $1M - cruise missile
+  'Tomahawk TLAM':    2000000,   // $2M - cruise missile
+  'JASSM-ER':         1400000,   // $1.4M - stealth cruise
+  'GBU-57 MOP':       3500000,   // $3.5M - bunker buster
+  'GBU-28':           150000,    // $150K - bunker buster
+  'B-2':              0,         // Sortie cost counted separately
+};
+
+// Avg costs by projectile TYPE as fallback (when specific name not matched)
+const ATTACK_COST_BY_TYPE = {
+  ballistic: 2000000,   // $2M avg
+  cruise:    1000000,    // $1M avg
+  drone:     50000,      // $50K avg
+  rocket:    100000,     // $100K avg
+  naval:     800000,     // $800K avg
+};
+
+// Defense/interception costs per system
+const DEFENSE_COST = {
+  'Arrow-3':        2200000,  // $2.2M per interceptor
+  'Arrow-2':        3000000,  // $3M per interceptor
+  'David\'s Sling': 1000000,  // $1M per interceptor (Stunner)
+  'Iron Dome':      50000,    // $50K per Tamir interceptor
+  'THAAD':          12000000, // $12M per interceptor
+  'Patriot PAC-3':  4000000,  // $4M per interceptor
+  'Bavar-373':      1500000,  // $1.5M est. per interceptor
+};
+const DEFAULT_DEFENSE_COST = 1500000; // $1.5M fallback
+
+function estimateCosts(launches) {
+  let attackTotal = 0;
+  let defenseTotal = 0;
+  launches.forEach(l => {
+    // Attack cost: try specific weapon name first, then type fallback
+    const names = (l.projectile_name || '').split(/[,\/]+/).map(n => n.trim());
+    let unitCost = 0;
+    let matched = false;
+    for (const name of names) {
+      for (const [key, cost] of Object.entries(ATTACK_COST)) {
+        if (name.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(name.toLowerCase())) {
+          unitCost = cost;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+    if (!matched) unitCost = ATTACK_COST_BY_TYPE[l.projectile_type] || 500000;
+    attackTotal += unitCost * l.count;
+
+    // Defense cost: based on interceptor system used
+    if (l.intercepted > 0 && l.interceptor_system) {
+      const defCost = DEFENSE_COST[l.interceptor_system] || DEFAULT_DEFENSE_COST;
+      defenseTotal += defCost * l.intercepted;
+    }
+  });
+  return { attackTotal, defenseTotal };
+}
+
+function formatCost(usd) {
+  if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
+  if (usd >= 1e6) return `$${(usd / 1e6).toFixed(0)}M`;
+  if (usd >= 1e3) return `$${(usd / 1e3).toFixed(0)}K`;
+  return `$${usd}`;
+}
+
+// ── Hex color parser ────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return [r, g, b];
+}
+
+// ── Animated counter ────────────────────────────────────────────────────────
+function animateCounter(el, target) {
+  const current = parseInt(el.textContent.replace(/,/g, '')) || 0;
+  if (current === target) return;
+  const diff = target - current;
+  const steps = 30;
+  const increment = diff / steps;
+  let step = 0;
+  el.classList.add('counting');
+  const timer = setInterval(() => {
+    step++;
+    const val = step >= steps ? target : Math.round(current + increment * step);
+    el.textContent = val.toLocaleString();
+    if (step >= steps) { clearInterval(timer); el.classList.remove('counting'); }
+  }, 20);
+}
+
+// ── 3D Camera Views ─────────────────────────────────────────────────────────
+const VIEWS = {
+  '3d':     { center: [44, 30], zoom: 4.5,  pitch: 50, bearing: -15 },
+  'top':    { center: [44, 30], zoom: 4.5,  pitch: 0,  bearing: 0 },
+  'israel': { center: [35, 31.5], zoom: 7,  pitch: 55, bearing: 20 },
+  'iran':   { center: [53, 33], zoom: 5.5,  pitch: 50, bearing: -30 },
+  'gulf':   { center: [50, 26], zoom: 5.5,  pitch: 45, bearing: 10 },
+  'yemen':  { center: [44, 16], zoom: 5.5,  pitch: 40, bearing: 0 },
+  'full':   { center: [46, 22], zoom: 3.5,  pitch: 40, bearing: -10 },
+};
+
+function setView(name) {
+  const v = VIEWS[name] || VIEWS['3d'];
+  map.flyTo({ center: v.center, zoom: v.zoom, pitch: v.pitch, bearing: v.bearing, duration: 1500, essential: true });
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.view-btn[onclick="setView('${name}')"]`)?.classList.add('active');
+}
+
+// ── Map Setup (MapLibre GL — full 3D) ───────────────────────────────────────
+function initMap() {
+  map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        'carto-dark': {
+          type: 'raster',
+          tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                  'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                  'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
+          tileSize: 256,
+          attribution: '&copy; CartoDB &copy; OSM'
+        }
+      },
+      layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 20 }],
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
+    },
+    center: [44, 30],
+    zoom: 4.5,
+    pitch: 50,
+    bearing: -15,
+    maxPitch: 70,
+    antialias: true,
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
+
+  // Add facility markers
+  map.on('load', () => {
+    FACILITIES.forEach(f => {
+      const el = document.createElement('div');
+      el.className = `facility-dot ${f.type}`;
+      el.title = f.name;
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([f.lng, f.lat])
+        .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(
+          `<strong style="color:#00ff41">${f.name}</strong><br><span style="color:#a8a8a8;text-transform:uppercase;font-size:9px">${f.type}</span>`
+        ))
+        .addTo(map);
+      facilityMarkers.push(marker);
+    });
+
+    // Start animation loop
+    animate();
+    mapLoaded = true;
+    if (pendingDraw) { drawLaunches(pendingDraw); pendingDraw = null; }
+  });
+}
+
+// ── Animation loop ──────────────────────────────────────────────────────────
+let animFrame = 0;
+function animate() {
+  animFrame++;
+  currentTime = (Date.now() % 10000) / 10000; // 0→1 in 10 seconds, repeating
+
+  // Pulse impact markers
+  if (deckOverlay && deckOverlay._props) {
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 500);
+    // Update layers with pulsing opacity for impact outer ring
+    const layers = deckOverlay._props.layers;
+    if (layers) {
+      const updated = layers.map(l => {
+        if (l.id === 'impact-outer') {
+          return l.clone({ opacity: pulse * 0.8 });
+        }
+        if (l.id === 'origin-outer') {
+          return l.clone({ opacity: 0.5 + 0.5 * Math.sin(Date.now() / 700) });
+        }
+        return l;
+      });
+      deckOverlay.setProps({ layers: updated });
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+// ── Timeline play/pause ────────────────────────────────────────────────────
+let isPlaying = false;
+let playInterval = null;
+let playSpeed = 1; // 1x, 2x, 4x
+const PLAY_SPEEDS = [1, 2, 4];
+let playSpeedIdx = 0;
+
+function togglePlay() {
+  isPlaying = !isPlaying;
+  const btn = document.getElementById('playBtn');
+  if (isPlaying) {
+    btn.innerHTML = '&#9646;&#9646;';
+    btn.classList.add('playing');
+    startPlayback();
+  } else {
+    btn.innerHTML = '&#9654;';
+    btn.classList.remove('playing');
+    if (playInterval) { clearInterval(playInterval); playInterval = null; }
+  }
+}
+
+function startPlayback() {
+  const slider = document.getElementById('timelineSlider');
+  const max = parseInt(slider.max);
+  if (parseInt(slider.value) >= max) slider.value = 0; // restart if at end
+
+  if (playInterval) clearInterval(playInterval);
+  playInterval = setInterval(() => {
+    const val = parseInt(slider.value);
+    const max = parseInt(slider.max);
+    if (val >= max) {
+      // Reached end — stop
+      isPlaying = false;
+      document.getElementById('playBtn').innerHTML = '&#9654;';
+      document.getElementById('playBtn').classList.remove('playing');
+      clearInterval(playInterval);
+      playInterval = null;
+      return;
+    }
+    slider.value = val + 1;
+    slider.dispatchEvent(new Event('input'));
+  }, 1500 / playSpeed);
+}
+
+function cycleSpeed() {
+  playSpeedIdx = (playSpeedIdx + 1) % PLAY_SPEEDS.length;
+  playSpeed = PLAY_SPEEDS[playSpeedIdx];
+  document.getElementById('speedBtn').textContent = `${playSpeed}x`;
+  if (isPlaying) startPlayback(); // restart interval with new speed
+}
+
+// ── Draw Launches with deck.gl on MapLibre ──────────────────────────────────
+function clearArcs() {
+  popupMarkers.forEach(m => m.remove());
+  popupMarkers = [];
+  if (deckOverlay) { map.removeControl(deckOverlay); deckOverlay = null; }
+}
+
+function drawLaunches(launches) {
+  if (!mapLoaded) { pendingDraw = launches; return; }
+  clearArcs();
+
+  // Aggregate by target location
+  const targetAgg = {};
+  launches.forEach(l => {
+    const key = `${l.target_lat.toFixed(2)},${l.target_lng.toFixed(2)}`;
+    if (!targetAgg[key]) targetAgg[key] = { lat: l.target_lat, lng: l.target_lng, country: l.target_country, total: 0, intercepted: 0, items: [] };
+    targetAgg[key].total += l.count;
+    targetAgg[key].intercepted += l.intercepted;
+    targetAgg[key].items.push(l);
+  });
+
+  // Build arc data grouped by origin→target + type
+  const arcPairs = {};
+  launches.forEach(l => {
+    const key = `${l.origin_lat},${l.origin_lng}-${l.target_lat},${l.target_lng}-${l.projectile_type}`;
+    if (!arcPairs[key]) arcPairs[key] = {
+      from: [l.origin_lng, l.origin_lat],
+      to: [l.target_lng, l.target_lat],
+      country: l.target_country,
+      originCountry: l.origin_country,
+      type: l.projectile_type,
+      total: 0
+    };
+    arcPairs[key].total += l.count;
+  });
+
+  const arcData = Object.values(arcPairs);
+  document.getElementById('activeTrajectories').textContent = arcData.length;
+
+  // Height per projectile type (as fraction — 0 to 1)
+  const HEIGHTS = { ballistic: 0.5, cruise: 0.2, drone: 0.08, rocket: 0.25, naval: 0.03 };
+
+  // Aggregate origins
+  const originAgg = {};
+  launches.forEach(l => {
+    const key = `${l.origin_lat},${l.origin_lng}`;
+    if (!originAgg[key]) originAgg[key] = { position: [l.origin_lng, l.origin_lat], total: 0, country: l.origin_country };
+    originAgg[key].total += l.count;
+  });
+
+  // Impact scatter data
+  const scatterData = Object.values(targetAgg).map(t => ({
+    position: [t.lng, t.lat], total: t.total,
+    color: hexToRgb(TARGET_COLORS[t.country] || '#ff3838')
+  }));
+
+  // deck.gl layers
+  const layers = [
+    // 3D elevated arcs — faint trail
+    new deck.ArcLayer({
+      id: 'missile-arcs-trail',
+      data: arcData,
+      getSourcePosition: d => d.from,
+      getTargetPosition: d => d.to,
+      getSourceColor: d => [...hexToRgb(TARGET_COLORS[d.originCountry] || '#4cc9f0'), 60],
+      getTargetColor: d => [...hexToRgb(TARGET_COLORS[d.country] || '#ff3838'), 80],
+      getWidth: d => Math.max(1, Math.min(5, Math.log2(d.total + 1) * 1.2)),
+      getHeight: d => HEIGHTS[d.type] || 0.2,
+      greatCircle: true,
+      numSegments: 100,
+      widthMinPixels: 1,
+      widthMaxPixels: 6,
+    }),
+    // 3D elevated arcs — bright animated head
+    new deck.ArcLayer({
+      id: 'missile-arcs',
+      data: arcData,
+      getSourcePosition: d => d.from,
+      getTargetPosition: d => d.to,
+      getSourceColor: d => [...hexToRgb(TARGET_COLORS[d.originCountry] || '#4cc9f0'), 220],
+      getTargetColor: d => [...hexToRgb(TARGET_COLORS[d.country] || '#ff3838'), 255],
+      getWidth: d => Math.max(1.5, Math.min(7, Math.log2(d.total + 1) * 1.5)),
+      getHeight: d => HEIGHTS[d.type] || 0.2,
+      greatCircle: true,
+      numSegments: 100,
+      widthMinPixels: 1,
+      widthMaxPixels: 8,
+    }),
+
+    // Impact pulsing scatter (target sites)
+    new deck.ScatterplotLayer({
+      id: 'impact-outer',
+      data: scatterData,
+      getPosition: d => d.position,
+      getRadius: d => Math.max(8000, Math.sqrt(d.total) * 4000),
+      getFillColor: d => [...d.color, 30],
+      getLineColor: d => [...d.color, 120],
+      stroked: true, lineWidthMinPixels: 1,
+      radiusMinPixels: 6, radiusMaxPixels: 40,
+    }),
+    new deck.ScatterplotLayer({
+      id: 'impact-inner',
+      data: scatterData,
+      getPosition: d => d.position,
+      getRadius: d => Math.max(3000, Math.sqrt(d.total) * 2000),
+      getFillColor: d => [...d.color, 120],
+      stroked: false,
+      radiusMinPixels: 3, radiusMaxPixels: 20,
+    }),
+
+    // Origin scatter (green glow)
+    new deck.ScatterplotLayer({
+      id: 'origin-outer',
+      data: Object.values(originAgg),
+      getPosition: d => d.position,
+      getRadius: d => Math.max(6000, Math.sqrt(d.total) * 3000),
+      getFillColor: [0, 255, 65, 25],
+      getLineColor: [0, 255, 65, 150],
+      stroked: true, lineWidthMinPixels: 1,
+      radiusMinPixels: 4, radiusMaxPixels: 30,
+    }),
+    new deck.ScatterplotLayer({
+      id: 'origin-inner',
+      data: Object.values(originAgg),
+      getPosition: d => d.position,
+      getRadius: d => Math.max(2000, Math.sqrt(d.total) * 1500),
+      getFillColor: [0, 255, 65, 100],
+      stroked: false,
+      radiusMinPixels: 2, radiusMaxPixels: 15,
+    }),
+
+    // Text labels at major origins
+    new deck.TextLayer({
+      id: 'origin-labels',
+      data: Object.values(originAgg).filter(d => d.total > 50),
+      getPosition: d => d.position,
+      getText: d => `${flag(d.country)} ${d.total}`,
+      getSize: 12,
+      getColor: [0, 255, 65, 220],
+      getAngle: 0,
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'bottom',
+      getPixelOffset: [0, -20],
+      fontFamily: "'JetBrains Mono', monospace",
+      fontWeight: 700,
+      billboard: true,
+    }),
+  ];
+
+  // Create deck.gl overlay on MapLibre
+  deckOverlay = new deck.MapboxOverlay({ layers, interleaved: false });
+  map.addControl(deckOverlay);
+
+  // MapLibre popups for interactivity (click targets)
+  Object.values(targetAgg).forEach(t => {
+    const el = document.createElement('div');
+    el.style.cssText = `width:${Math.max(10, Math.sqrt(t.total)*2.5)}px;height:${Math.max(10, Math.sqrt(t.total)*2.5)}px;border-radius:50%;cursor:pointer;background:transparent`;
+    const intSystems = [...new Set(t.items.map(i => i.interceptor_system).filter(Boolean))];
+    const intCountries = [...new Set(t.items.map(i => i.interceptor_country).filter(Boolean))];
+    const popupHtml = `<div style="max-width:280px;line-height:1.5">
+      <strong style="color:#00ff41;text-transform:uppercase;letter-spacing:1.5px">${flag(t.country)} ${t.country}</strong><br>
+      <span style="color:#a8a8a8">INBOUND:</span> <b style="color:#ff3838">${t.total}</b> · <span style="color:#a8a8a8">INT:</span> <b style="color:#00ff41">${t.intercepted}</b> · <span style="color:#a8a8a8">HIT:</span> <b style="color:#ff9f1c">${t.total - t.intercepted}</b><br>
+      ${intSystems.length ? `<div style="margin-top:4px;color:#4cc9f0;font-size:9px"><span style="color:#a8a8a8">DEFENSE:</span> ${intSystems.join(' · ')} ${intCountries.map(c=>flag(c)).join('')}</div>` : ''}
+      <hr style="border-color:#252525;margin:5px 0">
+      <div style="font-size:9px;color:#c8c8c8">${t.items.slice(0, 5).map(i => `<span style="color:#a8a8a8">${i.date}</span> ${flag(i.origin_country)}→${flag(i.target_country)} ${i.count} ${i.projectile_type}`).join('<br>')}
+      ${t.items.length > 5 ? `<br><span style="color:#a8a8a8">+${t.items.length - 5} more</span>` : ''}</div>
+    </div>`;
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([t.lng, t.lat])
+      .setPopup(new maplibregl.Popup({ offset: 10, maxWidth: '300px' }).setHTML(popupHtml))
+      .addTo(map);
+    popupMarkers.push(marker);
+  });
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────
+function updateStats(launches) {
+  const total = launches.reduce((s, l) => s + l.count, 0);
+  const intercepted = launches.reduce((s, l) => s + l.intercepted, 0);
+  const hit = launches.reduce((s, l) => s + l.hit, 0);
+  const casualties = launches.reduce((s, l) => s + l.casualties, 0);
+  const dates = [...new Set(launches.map(l => l.date))].sort();
+  const days = dates.length;
+  const rate = total > 0 ? ((intercepted / total) * 100).toFixed(1) : '0';
+
+  animateCounter(document.getElementById('statTotal'), total);
+  document.getElementById('statTotalSub').textContent = `${launches.length} events`;
+  animateCounter(document.getElementById('statIntercepted'), intercepted);
+  document.getElementById('statInterceptedPct').textContent = `${rate}% of total`;
+  animateCounter(document.getElementById('statHit'), hit);
+  document.getElementById('statHitPct').textContent = `${total > 0 ? ((hit / total) * 100).toFixed(1) : 0}% penetration`;
+  document.getElementById('statRate').textContent = `${rate}%`;
+  animateCounter(document.getElementById('statCasualties'), casualties);
+  animateCounter(document.getElementById('statDays'), days);
+
+  // Cost estimates
+  const costs = estimateCosts(launches);
+  document.getElementById('statAttackCost').textContent = formatCost(costs.attackTotal);
+  document.getElementById('statAttackCostSub').textContent = `${formatCost(costs.attackTotal / Math.max(total, 1))}/projectile avg`;
+  document.getElementById('statDefenseCost').textContent = formatCost(costs.defenseTotal);
+  document.getElementById('statDefenseCostSub').textContent = `${formatCost(costs.defenseTotal / Math.max(intercepted, 1))}/intercept avg`;
+
+  // Trend badges
+  const trendsEl = document.getElementById('trends');
+  if (dates.length >= 2) {
+    const day1Launches = launches.filter(l => l.date === dates[0]).reduce((s, l) => s + l.count, 0);
+    const lastDayLaunches = launches.filter(l => l.date === dates[dates.length - 1]).reduce((s, l) => s + l.count, 0);
+    const pctChange = day1Launches > 0 ? (((lastDayLaunches - day1Launches) / day1Launches) * 100).toFixed(0) : 0;
+    const isDown = pctChange < 0;
+    trendsEl.innerHTML = `
+      <div class="trend-badge ${isDown ? 'down' : 'up'}">${isDown ? '↓' : '↑'} ${Math.abs(pctChange)}% from Day 1 to latest</div>
+      <div class="trend-badge down">Day 1: ${day1Launches} → Day ${days}: ${lastDayLaunches}</div>
+      <div class="trend-badge">Total: ${total.toLocaleString()} projectiles in ${days} days</div>
+      <div class="trend-badge">${(total / days).toFixed(0)} avg/day</div>
+    `;
+  }
+
+  // Country breakdown
+  const byCountry = {};
+  launches.forEach(l => {
+    if (!byCountry[l.target_country]) byCountry[l.target_country] = { total: 0, intercepted: 0, casualties: 0 };
+    byCountry[l.target_country].total += l.count;
+    byCountry[l.target_country].intercepted += l.intercepted;
+    byCountry[l.target_country].casualties += l.casualties;
+  });
+  const maxCountry = Math.max(...Object.values(byCountry).map(c => c.total), 1);
+  document.getElementById('countryBreakdown').innerHTML = Object.entries(byCountry)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([country, data], i) => `
+      <div class="breakdown-item" style="animation-delay:${i * 80}ms">
+        <div class="country">${flag(country)} ${country}</div>
+        <div class="count" style="color:${TARGET_COLORS[country] || '#4cc9f0'}">${data.total.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Int: ${data.intercepted} · Cas: ${data.casualties}</div>
+        <div class="bar"><div class="bar-fill" style="width:${(data.total / maxCountry * 100)}%;background:${TARGET_COLORS[country] || '#4cc9f0'}"></div></div>
+      </div>`
+    ).join('');
+
+  // Origin breakdown
+  const byOrigin = {};
+  launches.forEach(l => {
+    if (!byOrigin[l.origin_country]) byOrigin[l.origin_country] = { total: 0, hit: 0 };
+    byOrigin[l.origin_country].total += l.count;
+    byOrigin[l.origin_country].hit += l.hit;
+  });
+  const ORIGIN_COLORS = { 'Iran': '#ff3838', 'Yemen': '#ff9f1c', 'Lebanon': '#ffd60a', 'Gaza': '#c77dff', 'Israel': '#4cc9f0', 'USA': '#00ff41' };
+  const maxOrigin = Math.max(...Object.values(byOrigin).map(o => o.total), 1);
+  document.getElementById('originBreakdown').innerHTML = Object.entries(byOrigin)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([origin, data], i) => `
+      <div class="breakdown-item" style="animation-delay:${i * 80}ms">
+        <div class="country">${flag(origin)} ${origin}</div>
+        <div class="count" style="color:${ORIGIN_COLORS[origin] || '#f0f0f0'}">${data.total.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Hits: ${data.hit}</div>
+        <div class="bar"><div class="bar-fill" style="width:${(data.total / maxOrigin * 100)}%;background:${ORIGIN_COLORS[origin] || '#f0f0f0'}"></div></div>
+      </div>`
+    ).join('');
+
+  // Interception systems breakdown
+  const bySystem = {};
+  launches.forEach(l => {
+    if (!l.interceptor_system || !l.intercepted) return;
+    if (!bySystem[l.interceptor_system]) bySystem[l.interceptor_system] = { total: 0, country: l.interceptor_country };
+    bySystem[l.interceptor_system].total += l.intercepted;
+  });
+  const maxSys = Math.max(...Object.values(bySystem).map(s => s.total), 1);
+  document.getElementById('interceptorBreakdown').innerHTML = Object.entries(bySystem)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([sys, data], i) => `
+      <div class="breakdown-item" style="animation-delay:${i * 80}ms">
+        <div class="country">${flag(data.country)} ${sys}</div>
+        <div class="count" style="color:#00ff41">${data.total.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Interceptions</div>
+        <div class="bar"><div class="bar-fill" style="width:${(data.total / maxSys * 100)}%;background:#00ff41"></div></div>
+      </div>`
+    ).join('');
+
+  // Type breakdown
+  const byType = {};
+  launches.forEach(l => {
+    if (!byType[l.projectile_type]) byType[l.projectile_type] = { total: 0, intercepted: 0 };
+    byType[l.projectile_type].total += l.count;
+    byType[l.projectile_type].intercepted += l.intercepted;
+  });
+  const typeColors = { ballistic: '#ff3838', cruise: '#ff9f1c', drone: '#ffd60a', naval: '#4cc9f0', rocket: '#c77dff' };
+  const maxType = Math.max(...Object.values(byType).map(t => t.total), 1);
+  document.getElementById('typeBreakdown').innerHTML = Object.entries(byType)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([type, data], i) => `
+      <div class="breakdown-item" style="animation-delay:${i * 80}ms">
+        <div class="country" style="text-transform:capitalize">${type}</div>
+        <div class="count" style="color:${typeColors[type] || '#f0f0f0'}">${data.total.toLocaleString()}</div>
+        <div style="font-size:11px;color:var(--muted)">Intercepted: ${data.intercepted} (${data.total > 0 ? ((data.intercepted / data.total) * 100).toFixed(0) : 0}%) · ~${formatCost((ATTACK_COST_BY_TYPE[type] || 500000) * data.total)}</div>
+        <div class="bar"><div class="bar-fill" style="width:${(data.total / maxType * 100)}%;background:${typeColors[type] || '#f0f0f0'}"></div></div>
+      </div>`
+    ).join('');
+}
+
+// ── Timeline Chart ───────────────────────────────────────────────────────────
+function updateChart(launches) {
+  const byDateType = {};
+  const types = new Set();
+  launches.forEach(l => {
+    if (!byDateType[l.date]) byDateType[l.date] = {};
+    if (!byDateType[l.date][l.projectile_type]) byDateType[l.date][l.projectile_type] = 0;
+    byDateType[l.date][l.projectile_type] += l.count;
+    types.add(l.projectile_type);
+  });
+
+  const dates = Object.keys(byDateType).sort();
+  const typeColors = { ballistic: '#ff3838', cruise: '#ff9f1c', drone: '#ffd60a', naval: '#4cc9f0', rocket: '#c77dff' };
+  const datasets = [...types].map(type => ({
+    label: type.toUpperCase(),
+    data: dates.map(d => byDateType[d][type] || 0),
+    backgroundColor: typeColors[type] || '#a8a8a8',
+    borderWidth: 0,
+    borderRadius: 0,
+  }));
+
+  if (timelineChart) timelineChart.destroy();
+  const ctx = document.getElementById('timelineChart').getContext('2d');
+  timelineChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: dates.map(d => { const p = d.split('-'); return `${p[1]}/${p[2]}`; }), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: '#a8a8a8', font: { size: 10, family: "'JetBrains Mono', monospace" }, boxWidth: 10, padding: 8 } },
+        tooltip: { mode: 'index', intersect: false, backgroundColor: '#121212', titleColor: '#00ff41', bodyColor: '#f0f0f0', borderColor: 'rgba(0,255,65,.3)', borderWidth: 1, titleFont: { family: "'JetBrains Mono', monospace", size: 11 }, bodyFont: { family: "'JetBrains Mono', monospace", size: 10 } }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: '#a8a8a8', font: { size: 9, family: "'JetBrains Mono', monospace" } }, grid: { color: 'rgba(37,37,37,.5)' } },
+        y: { stacked: true, ticks: { color: '#a8a8a8', font: { size: 9, family: "'JetBrains Mono', monospace" } }, grid: { color: 'rgba(37,37,37,.5)' }, title: { display: true, text: 'LAUNCHES', color: '#a8a8a8', font: { family: "'JetBrains Mono', monospace", size: 10 } } }
+      }
+    }
+  });
+}
+
+// ── Timeline Slider ──────────────────────────────────────────────────────────
+function setupSlider() {
+  const slider = document.getElementById('timelineSlider');
+  const dates = [...new Set(allLaunches.map(l => l.date))].sort();
+  if (dates.length === 0) return;
+
+  slider.max = dates.length - 1;
+  slider.value = dates.length - 1;
+  document.getElementById('sliderStart').textContent = formatDate(dates[0]);
+  document.getElementById('sliderEnd').textContent = formatDate(dates[dates.length - 1]);
+
+  slider.oninput = () => {
+    const idx = parseInt(slider.value);
+    const endDate = dates[idx];
+    document.getElementById('sliderLabel').textContent = `Up to ${formatDate(endDate)}`;
+    applyFilters(endDate);
+  };
+}
+
+function formatDate(d) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const p = d.split('-');
+  return `${months[parseInt(p[1]) - 1]} ${parseInt(p[2])}`;
+}
+
+// ── Filters ──────────────────────────────────────────────────────────────────
+function applyFilters(maxDate) {
+  const dates = [...new Set(allLaunches.map(l => l.date))].sort();
+  const cutoff = maxDate || dates[dates.length - 1] || '9999-12-31';
+
+  filteredLaunches = allLaunches.filter(l => {
+    if (l.date > cutoff) return false;
+    if (activeTypeFilter !== 'all' && l.projectile_type !== activeTypeFilter) return false;
+    if (activeCountryFilter !== 'all' && l.target_country !== activeCountryFilter) return false;
+    if (activeOriginFilter !== 'all' && l.origin_country !== activeOriginFilter) return false;
+    return true;
+  });
+
+  drawLaunches(filteredLaunches);
+  updateStats(filteredLaunches);
+  updateChart(filteredLaunches);
+}
+
+// Filter button handlers
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTypeFilter = btn.dataset.type;
+    applyFilters();
+  });
+});
+
+document.getElementById('countryFilter').addEventListener('change', (e) => {
+  activeCountryFilter = e.target.value;
+  applyFilters();
+});
+
+document.getElementById('originFilter').addEventListener('change', (e) => {
+  activeOriginFilter = e.target.value;
+  applyFilters();
+});
+
+// ── Missile info modal ───────────────────────────────────────────────────────
+function showMissileInfo() {
+  document.getElementById('missileInfo').classList.add('show');
+  document.getElementById('missileOverlay').classList.add('show');
+}
+function hideMissileInfo() {
+  document.getElementById('missileInfo').classList.remove('show');
+  document.getElementById('missileOverlay').classList.remove('show');
+}
+
+// ── WebSocket (disabled for static site) ─────────────────────────────────────
+function connectWs() {
+  // Static site — no WebSocket backend. Mark as static data mode.
+  document.getElementById('liveDot').classList.add('disconnected');
+  document.getElementById('liveText').textContent = 'STATIC DATA';
+}
+
+// ── Fetch initial data via API (fallback if WS not available) ────────────────
+async function fetchData() {
+  try {
+    const res = await fetch('./data/launches.json');
+    if (res.ok) {
+      allLaunches = await res.json();
+      setupSlider();
+      applyFilters();
+    }
+  } catch {}
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+initMap();
+fetchData();
+connectWs();
+</script>
+</body>
+</html>
